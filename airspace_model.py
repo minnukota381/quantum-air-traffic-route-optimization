@@ -1,24 +1,28 @@
 import networkx as nx
 import matplotlib
-matplotlib.use('Agg')  # For environments without GUI, change to 'TkAgg' or remove for local GUI
+matplotlib.use('Agg')  # Use a backend that does not need GUI support
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
-import os
+from mpl_toolkits.mplot3d import Axes3D  # For 3D plotting
 
-# Airspace dimensions
-X_DIM, Y_DIM, Z_DIM, T_MAX = 5, 5, 3, 10
+# Dimensions of the airspace
+X_DIM = 5  # east-west
+Y_DIM = 5  # north-south
+Z_DIM = 3  # altitude levels
+T_MAX = 10  # time steps
 
 def create_4d_grid():
-    G = nx.DiGraph()
+    G = nx.DiGraph()  # Directed graph
+
     for t in range(T_MAX):
         for x in range(X_DIM):
             for y in range(Y_DIM):
                 for z in range(Z_DIM):
                     node = (x, y, z, t)
                     G.add_node(node)
-                    for dx, dy, dz in [(-1,0,0),(1,0,0),(0,-1,0),(0,1,0),(0,0,1),(0,0,-1),(0,0,0)]:
+
+                    # Possible movements
+                    for dx, dy, dz in [(-1,0,0), (1,0,0), (0,-1,0), (0,1,0), (0,0,1), (0,0,-1), (0,0,0)]:
                         nx_ = x + dx
                         ny_ = y + dy
                         nz_ = z + dz
@@ -29,67 +33,52 @@ def create_4d_grid():
     return G
 
 def define_flights():
-    # For demo, flights move linearly in x,y,z over time steps 0..9
-    # Generate intermediate positions as well
-    flights = [
+    return [
         {
             "id": "F1",
-            "path": [(x, x, 0, t) for t, x in enumerate(np.linspace(0, 4, T_MAX).astype(int))]
+            "start": (0, 0, 0, 0),
+            "end": (4, 4, 0, 9)
         },
         {
             "id": "F2",
-            "path": [(4 - t, t, 1, t) for t in range(T_MAX)]
+            "start": (4, 0, 1, 0),
+            "end": (0, 4, 1, 9)
         }
     ]
-    return flights
 
-def animate_flights_3d(flights):
+def find_paths(graph, flights):
+    flight_paths = {}
+    for flight in flights:
+        try:
+            path = nx.shortest_path(graph, source=flight['start'], target=flight['end'])
+            flight_paths[flight['id']] = path
+            print(f"Flight {flight['id']} path found with {len(path)} steps.")
+        except nx.NetworkXNoPath:
+            print(f"No path found for flight {flight['id']}")
+            flight_paths[flight['id']] = None
+    return flight_paths
+
+def visualize_flight_paths_3d(flight_paths):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
-    ax.set_xlim(0, X_DIM-1)
-    ax.set_ylim(0, Y_DIM-1)
-    ax.set_zlim(0, Z_DIM-1)
+    colors = ['r', 'b', 'g', 'm', 'c', 'y']
+    for i, (flight_id, path) in enumerate(flight_paths.items()):
+        if path is None:
+            continue
+        xs = [node[0] for node in path]
+        ys = [node[1] for node in path]
+        zs = [node[2] for node in path]
+        ax.plot(xs, ys, zs, marker='o', label=flight_id, color=colors[i % len(colors)])
 
-    ax.set_xlabel("X (Longitude)")
-    ax.set_ylabel("Y (Latitude)")
-    ax.set_zlabel("Z (Altitude)")
-    ax.set_title("Flight Paths 3D Animation")
-
-    colors = ['r', 'b', 'g', 'm']
-    flight_lines = []
-    flight_dots = []
-
-    # Initialize lines and dots for each flight
-    for i, flight in enumerate(flights):
-        # Start with empty lines/dots
-        line, = ax.plot([], [], [], color=colors[i % len(colors)], label=flight["id"])
-        dot, = ax.plot([], [], [], marker='o', color=colors[i % len(colors)])
-        flight_lines.append(line)
-        flight_dots.append(dot)
-
+    ax.set_xlabel('X (Longitude)')
+    ax.set_ylabel('Y (Latitude)')
+    ax.set_zlabel('Z (Altitude)')
+    ax.set_title('3D Flight Paths')
     ax.legend()
-
-    def update(t):
-        for i, flight in enumerate(flights):
-            # Select all points up to current time step t
-            path = flight["path"][:t+1]
-            if not path:
-                continue
-            xs, ys, zs, ts = zip(*path)
-            flight_lines[i].set_data(xs, ys)
-            flight_lines[i].set_3d_properties(zs)
-
-            # Dot at current position
-            flight_dots[i].set_data(xs[-1:], ys[-1:])
-            flight_dots[i].set_3d_properties(zs[-1:])
-        return flight_lines + flight_dots
-
-    anim = FuncAnimation(fig, update, frames=T_MAX, interval=800, blit=True)
-
-    os.makedirs('images', exist_ok=True)
-    anim.save('images/flight_paths_3d.gif', writer='imagemagick')
-    print("3D animation saved as images/flight_paths_3d.gif")
+    plt.savefig("./images/flight_paths_3d.png")
+    plt.close()
+    print("3D flight paths image saved as ./images/flight_paths_3d.png")
 
 if __name__ == "__main__":
     grid = create_4d_grid()
@@ -97,4 +86,13 @@ if __name__ == "__main__":
     print(f"Total Edges: {len(grid.edges)}")
 
     flights = define_flights()
-    animate_flights_3d(flights)
+    flight_paths = find_paths(grid, flights)
+
+    # Optional: print full paths step-by-step
+    for fid, path in flight_paths.items():
+        if path:
+            print(f"\nFull path for Flight {fid}:")
+            for node in path:
+                print(f"  Position (x,y,z)={node[:3]} at time t={node[3]}")
+
+    visualize_flight_paths_3d(flight_paths)
