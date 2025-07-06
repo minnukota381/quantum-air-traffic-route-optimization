@@ -4,3 +4,5 @@ venv/
 ENV/
 env/
 .venv/
+venv310/
+QC/
